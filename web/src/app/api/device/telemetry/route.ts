@@ -3,64 +3,51 @@ import { stateStore } from '@/lib/stateStore';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { TelemetryPayload, SystemEvent } from '@/types';
 
-export async function POST(req: NextRequest) {
+/**
+ * Fire-and-forget Supabase sync.
+ * Called WITHOUT await so telemetry always responds in <5ms.
+ * If Supabase tables don't exist yet, errors are silently swallowed.
+ */
+async function syncToSupabase(
+  deviceId: string,
+  derivedState: any,
+  newEvents: SystemEvent[],
+  lat: number,
+  lng: number,
+  hasFix: boolean,
+  now: string
+) {
+  // 1. Upsert device state → triggers Realtime broadcast to all dashboards
   try {
-    const payload = (await req.json()) as TelemetryPayload;
+    await supabaseAdmin.from('device_state').upsert(
+      { device_id: deviceId, person_name: derivedState.personName, payload: derivedState, updated_at: now },
+      { onConflict: 'device_id' }
+    );
+  } catch (e: any) {
+    console.warn('[Supabase] device_state upsert (tables may not exist yet):', e.message);
+  }
 
-    if (!payload.deviceId) {
-      return NextResponse.json({ error: 'Missing deviceId parameter' }, { status: 400 });
+  // 2. Insert GPS trail point
+  if (hasFix && lat !== 0 && lng !== 0) {
+    try {
+      await supabaseAdmin.from('location_trail').insert({
+        device_id: deviceId,
+        latitude: lat,
+        longitude: lng,
+        accuracy_m: derivedState.location.accuracyM ?? 4.2,
+        speed_kmh: derivedState.location.speedKmh ?? 0,
+        heading_deg: derivedState.location.headingDeg ?? 0,
+        source: derivedState.source,
+        recorded_at: now,
+      });
+    } catch (e: any) {
+      console.warn('[Supabase] location_trail insert:', e.message);
     }
+  }
 
-    // ─── 1. Business Logic (geofence, hazard derivation, events) ───
-    const eventsBefore = stateStore.getEvents(payload.deviceId);
-    const countBefore = eventsBefore.length;
-
-    stateStore.updateFromTelemetry(payload);
-
-    const derivedState = stateStore.getDevice(payload.deviceId);
-    const eventsAfter = stateStore.getEvents(payload.deviceId);
-    const newEvents = eventsAfter.slice(0, Math.max(0, eventsAfter.length - countBefore));
-
-    // ─── 2. Persist to Supabase (triggers Realtime broadcast) ───
-    const now = new Date().toISOString();
-
-    // 2a. Upsert full device state (Realtime broadcasts this to all dashboards)
-    const { error: stateErr } = await supabaseAdmin
-      .from('device_state')
-      .upsert(
-        {
-          device_id: payload.deviceId,
-          person_name: derivedState.personName,
-          payload: derivedState,
-          updated_at: now,
-        },
-        { onConflict: 'device_id' }
-      );
-    if (stateErr) console.error('[Supabase] device_state upsert error:', stateErr.message);
-
-    // 2b. Insert location trail point (if valid GPS fix)
-    const lat = derivedState.location.latitude;
-    const lng = derivedState.location.longitude;
-    const hasFix = derivedState.location.fix === 'LOCKED' || derivedState.location.fix === 'SIMULATED';
-
-    if (hasFix && lat !== 0 && lng !== 0) {
-      const { error: trailErr } = await supabaseAdmin
-        .from('location_trail')
-        .insert({
-          device_id: payload.deviceId,
-          latitude: lat,
-          longitude: lng,
-          accuracy_m: derivedState.location.accuracyM ?? 4.2,
-          speed_kmh: derivedState.location.speedKmh ?? 0,
-          heading_deg: derivedState.location.headingDeg ?? 0,
-          source: derivedState.source,
-          recorded_at: now,
-        });
-      if (trailErr) console.error('[Supabase] location_trail insert error:', trailErr.message);
-    }
-
-    // 2c. Upsert new system events (Realtime broadcasts INSERTs to event feed)
-    if (newEvents.length > 0) {
+  // 3. Insert new safety events → Realtime broadcasts INSERTs to event feeds
+  if (newEvents.length > 0) {
+    try {
       const rows = newEvents.map((evt: SystemEvent) => ({
         id: evt.id,
         device_id: evt.deviceId,
@@ -73,21 +60,52 @@ export async function POST(req: NextRequest) {
         acknowledged: evt.acknowledged ?? false,
         created_at: evt.timestamp,
       }));
-
-      const { error: evtErr } = await supabaseAdmin
+      await supabaseAdmin
         .from('system_events')
         .upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
-      if (evtErr) console.error('[Supabase] system_events upsert error:', evtErr.message);
+    } catch (e: any) {
+      console.warn('[Supabase] system_events upsert:', e.message);
+    }
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const payload = (await req.json()) as TelemetryPayload;
+
+    if (!payload.deviceId) {
+      return NextResponse.json({ error: 'Missing deviceId parameter' }, { status: 400 });
     }
 
+    // ─── 1. Business Logic (always runs, no Supabase dependency) ───
+    const eventsBefore = stateStore.getEvents(payload.deviceId).length;
+    stateStore.updateFromTelemetry(payload);
+    const derivedState = stateStore.getDevice(payload.deviceId);
+    const eventsAfter = stateStore.getEvents(payload.deviceId);
+    const newEvents = eventsAfter.slice(0, Math.max(0, eventsAfter.length - eventsBefore));
+
+    const now = payload.timestamp || new Date().toISOString();
+    const lat = derivedState.location.latitude;
+    const lng = derivedState.location.longitude;
+    const hasFix =
+      derivedState.location.fix === 'LOCKED' || derivedState.location.fix === 'SIMULATED';
+
+    // ─── 2. Fire-and-forget Supabase sync (never blocks response) ───
+    // This triggers Realtime broadcast to all subscribed dashboards.
+    syncToSupabase(payload.deviceId, derivedState, newEvents, lat, lng, hasFix, now);
+
+    // ─── 3. Respond immediately (Supabase sync is async in background) ───
     return NextResponse.json({
       success: true,
       deviceId: payload.deviceId,
       receivedAt: now,
-      supabaseSync: true,
+      supabaseSync: 'async',
     });
   } catch (err: any) {
-    return NextResponse.json({ error: 'Invalid telemetry payload', details: err.message }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid telemetry payload', details: err.message },
+      { status: 400 }
+    );
   }
 }
 
