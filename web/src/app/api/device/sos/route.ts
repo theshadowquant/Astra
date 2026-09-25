@@ -4,7 +4,7 @@ import { stateStore } from '@/lib/stateStore';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { deviceId, action } = body;
+    const { deviceId = 'ASTRA-001', action } = body;
 
     if (!deviceId) {
       return NextResponse.json({ error: 'Missing deviceId' }, { status: 400 });
@@ -26,14 +26,14 @@ export async function POST(req: NextRequest) {
         left: { distanceCm: 150, status: 'VALID' },
         front: { distanceCm: 150, status: 'VALID' },
         right: { distanceCm: 150, status: 'VALID' },
-        imu: { status: 'OK', accelG: 1.0, pitchDeg: 0, groundHazard: false },
+        imu: { status: 'OK', accelG: 1.0, pitchDeg: 0 },
       },
-      safety: {
+      navigation: {
         risk: 'CRITICAL',
-        direction: 'STOP',
+        guidance: 'STOP',
         state: 'SOS',
       },
-      sos: { active: true },
+      emergency: { sosActive: true },
     });
 
     return NextResponse.json({ success: true, message: 'Emergency SOS Registered' });

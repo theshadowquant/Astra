@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { DeviceState, DeviceLocation } from '@/types';
+import Navbar from '@/components/Navbar';
 import LiveMap from '@/components/LiveMap';
-import { MapPin, Navigation, Compass, Shield, Clock, AlertOctagon } from 'lucide-react';
+import SOSAlertModal from '@/components/SOSAlertModal';
+import { DeviceState, DeviceLocation } from '@/types';
+import { MapPin, Navigation, Compass, Radio, Activity, ShieldCheck, Crosshair, ArrowUpRight } from 'lucide-react';
 
 export default function LiveLocationPage() {
   const [device, setDevice] = useState<DeviceState | null>(null);
   const [trail, setTrail] = useState<DeviceLocation[]>([]);
-  const [timeWindow, setTimeWindow] = useState<'5m' | '15m' | '30m' | '1h'>('15m');
+  const [loading, setLoading] = useState(true);
 
-  const fetchLocationData = async () => {
+  const fetchState = async () => {
     try {
       const res = await fetch('/api/device/ASTRA-001');
       if (res.ok) {
@@ -18,107 +20,146 @@ export default function LiveLocationPage() {
         setDevice(data.device);
         setTrail(data.trail || []);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error('Failed to fetch location state:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchLocationData();
-    const interval = setInterval(fetchLocationData, 500);
-    return () => clearInterval(interval);
+    fetchState();
+    const timer = setInterval(fetchState, 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  if (!device) {
+  const handleSyncBrowserGPS = async (lat: number, lng: number) => {
+    try {
+      await fetch('/api/device/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: 'ASTRA-001',
+          source: 'BROWSER_GPS',
+          location: {
+            latitude: lat,
+            longitude: lng,
+            accuracyM: 4.2,
+            speedKmh: 1.2,
+            headingDeg: 88,
+            fix: 'LOCKED',
+          },
+        }),
+      });
+      fetchState();
+    } catch (err) {
+      console.error('Failed to sync browser GPS:', err);
+    }
+  };
+
+  if (loading && !device) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="text-sm text-slate-400">Loading live GPS telemetry stream...</div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
+        <Activity className="w-8 h-8 text-sky-400 animate-spin mb-3" />
+        <p className="text-sm font-semibold">Acquiring Pedestrian GPS Stream...</p>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-card border border-border">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black text-white tracking-tight">Dedicated Live Location & Rescue Map</h1>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-              GPS SATELLITE FIX
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Continuous outdoor & indoor pedestrian tracking for emergency rescue dispatch.
-          </p>
-        </div>
+  if (!device) return null;
 
-        <div className="flex items-center gap-2">
-          {(['5m', '15m', '30m', '1h'] as const).map((w) => (
-            <button
-              key={w}
-              onClick={() => setTimeWindow(w)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                timeWindow === w
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                  : 'bg-slate-900/50 text-slate-400 border-slate-800 hover:text-slate-200'
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      <Navbar
+        status={device.status}
+        source={device.source}
+        personName={device.personName}
+        deviceId={device.deviceId}
+      />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-5">
+        {/* Header Telematics Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-sky-400" />
+              <h1 className="text-base font-black uppercase text-white tracking-wide">
+                Live Precision Location & Safe Zone Geofence
+              </h1>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Continuous GPS Tracking for <span className="text-white font-semibold">{device.personName}</span> (HW-248 NEO-6M Receiver)
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span
+              className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                device.geofence.status === 'INSIDE'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : 'bg-red-500/10 text-red-400 border-red-500/30'
               }`}
             >
-              Trail: {w}
-            </button>
-          ))}
+              {device.geofence.status === 'INSIDE' ? '✓ INSIDE SAFE ZONE' : '⚠️ BEYOND SAFE ZONE'}
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3">
+        {/* Full-Height Responsive Map */}
+        <div className="flex-1 min-h-[520px]">
           <LiveMap
-            latitude={device.gps.latitude || 12.9716}
-            longitude={device.gps.longitude || 77.5946}
-            gpsStatus={device.gps.status}
-            accuracyMeters={device.gps.accuracyMeters}
+            latitude={device.location.latitude}
+            longitude={device.location.longitude}
+            gpsStatus={device.location.fix}
+            accuracyMeters={device.location.accuracyM}
+            speedKmh={device.location.speedKmh}
+            headingDeg={device.location.headingDeg}
             trail={trail}
-            sosActive={device.sos.active}
+            sosActive={device.emergency.sosActive}
+            source={device.source}
+            geofence={device.geofence.config}
+            heightClass="h-[520px]"
+            onSyncBrowserGPS={handleSyncBrowserGPS}
           />
         </div>
 
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-card border border-border space-y-3 text-xs">
-            <h4 className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Navigation className="w-4 h-4 text-cyan-400" />
-              Kinematics & Positioning
-            </h4>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Current Speed:</span>
-                <span className="font-mono text-white font-bold">{device.gps.speedMps ?? 1.1} m/s (~4.0 km/h)</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Heading Azimuth:</span>
-                <span className="font-mono text-cyan-400 font-bold">{device.gps.headingDegrees ?? 88}° East</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Signal Accuracy:</span>
-                <span className="font-mono text-emerald-400 font-bold">&plusmn;{device.gps.accuracyMeters ?? 4.8}m</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Fix Timestamp:</span>
-                <span className="font-mono text-slate-300">{new Date(device.timestamp).toLocaleTimeString()}</span>
-              </div>
+        {/* Detailed 4-Metric Coordinates Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Current Latitude</div>
+            <div className="text-base font-black font-mono text-white mt-1">
+              {device.location.latitude.toFixed(6)}° N
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-card border border-border space-y-2 text-xs">
-            <h4 className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-emerald-400" />
-              Geofence & Safety Zone
-            </h4>
-            <p className="text-slate-400 leading-relaxed">
-              Safe mobility zone: <b className="text-slate-200">Urban Pedestrian Corridor</b>. No geofence violations detected in the past 24 hours.
-            </p>
+          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Current Longitude</div>
+            <div className="text-base font-black font-mono text-white mt-1">
+              {device.location.longitude.toFixed(6)}° E
+            </div>
+          </div>
+
+          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Walking Velocity</div>
+            <div className="text-base font-black font-mono text-sky-400 mt-1">
+              {device.location.speedKmh ? device.location.speedKmh.toFixed(1) : '1.2'} km/h
+            </div>
+          </div>
+
+          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Safe Zone Radius</div>
+            <div className="text-base font-black font-mono text-emerald-400 mt-1">
+              {device.geofence.config?.radiusMeters || 500} meters
+            </div>
           </div>
         </div>
-      </div>
+      </main>
+
+      <SOSAlertModal
+        device={device}
+        onAcknowledge={() => {}}
+        onReset={() => {}}
+      />
     </div>
   );
 }

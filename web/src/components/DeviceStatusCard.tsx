@@ -2,73 +2,164 @@
 
 import React from 'react';
 import { DeviceState } from '@/types';
-import { Battery, BatteryCharging, Radio, Wifi, Zap, Clock, ShieldCheck } from 'lucide-react';
+import { Battery, BatteryCharging, BatteryWarning, Radio, Compass, Shield, User, Clock, HardDrive } from 'lucide-react';
 
 interface Props {
   device: DeviceState;
 }
 
 export default function DeviceStatusCard({ device }: Props) {
-  const getBatteryColor = (pct?: number) => {
-    if (!pct) return 'text-slate-400';
-    if (pct < 20) return 'text-rose-400';
-    if (pct < 40) return 'text-amber-400';
-    return 'text-emerald-400';
-  };
+  const isOnline = device.status === 'ONLINE';
+  const isStale = device.status === 'STALE';
+  const isLowBattery = device.battery.percent < 20;
 
   return (
-    <div className="p-4 rounded-xl bg-card border border-border flex flex-col justify-between space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Device Identity</span>
-          <h4 className="text-base font-bold text-white flex items-center gap-1.5 mt-0.5">
+    <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-4 shadow-xl flex flex-col justify-between">
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-sky-400" />
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                Protected Pedestrian & Device Status
+              </h3>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-sky-400">
             {device.deviceId}
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">v1.0.0</span>
-          </h4>
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          ONLINE
+
+        {/* Person Hero Block */}
+        <div className="flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+              RK
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white">{device.personName}</div>
+              <div className="text-[11px] text-slate-400">AngRaksha Smart Cane Carrier</div>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="text-[10px] font-semibold text-slate-400 uppercase">Guardian State</div>
+            <div
+              className={`text-xs font-bold ${
+                device.emergency.sosActive
+                  ? 'text-red-400 animate-pulse'
+                  : device.navigation.risk === 'CLEAR'
+                  ? 'text-emerald-400'
+                  : 'text-amber-400'
+              }`}
+            >
+              {device.emergency.sosActive ? '🚨 SOS PANIC ACTIVE' : device.navigation.risk === 'CLEAR' ? 'SECURE / NORMAL' : 'HAZARD CAUTION'}
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Telematics Indicators */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Battery */}
+          <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1">
+                {isLowBattery ? (
+                  <BatteryWarning className="w-3.5 h-3.5 text-red-400" />
+                ) : (
+                  <Battery className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                Battery
+              </span>
+              <span className="font-mono text-slate-300">{device.battery.voltage.toFixed(2)}V</span>
+            </div>
+            <div className="flex items-baseline gap-1 my-1">
+              <span className={`text-xl font-black font-mono ${isLowBattery ? 'text-red-400' : 'text-white'}`}>
+                {device.battery.percent}%
+              </span>
+              <span className="text-[10px] font-semibold text-slate-400">Li-ion (3.7V)</span>
+            </div>
+            <div className="w-full bg-slate-900 h-1 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${isLowBattery ? 'bg-red-500' : 'bg-emerald-500'}`}
+                style={{ width: `${device.battery.percent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* GPS Fix */}
+          <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1">
+                <Radio className="w-3.5 h-3.5 text-sky-400" />
+                HW-248 GPS
+              </span>
+              <span className="text-[9px] px-1 rounded bg-sky-500/20 text-sky-400 font-bold">
+                {device.location.fix}
+              </span>
+            </div>
+            <div className="text-xs font-mono font-bold text-white mt-1">
+              {device.location.latitude.toFixed(4)}°, {device.location.longitude.toFixed(4)}°
+            </div>
+            <div className="text-[10px] text-slate-400">
+              Accuracy: &plusmn;{device.location.accuracyM ? device.location.accuracyM.toFixed(1) : 4.2}m
+            </div>
+          </div>
+
+          {/* Geofence */}
+          <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1">
+                <Compass className="w-3.5 h-3.5 text-emerald-400" />
+                Safe Zone
+              </span>
+              <span
+                className={`text-[9px] px-1 rounded font-bold ${
+                  device.geofence.status === 'INSIDE'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-red-500/20 text-red-400'
+                }`}
+              >
+                {device.geofence.status}
+              </span>
+            </div>
+            <div className="text-xs font-bold text-slate-200 mt-1">
+              Radius: {device.geofence.config?.radiusMeters || 500}m
+            </div>
+            <div className="text-[10px] text-slate-400">
+              {device.geofence.status === 'INSIDE' ? 'Within Home Perimeter' : 'Beyond Safe Zone!'}
+            </div>
+          </div>
+
+          {/* Last Heartbeat */}
+          <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                Heartbeat
+              </span>
+              <span
+                className={`text-[9px] px-1 rounded font-bold ${
+                  isOnline ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                }`}
+              >
+                {device.status}
+              </span>
+            </div>
+            <div className="text-xs font-mono font-bold text-white mt-1">
+              {device.connectivity.heartbeatAgeSec}s ago
+            </div>
+            <div className="text-[10px] text-slate-400">
+              Control: {device.connectivity.controlLatencyMs.toFixed(1)}ms
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <div className="p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
-          <div className="text-slate-400 flex items-center gap-1.5">
-            <Battery className={`w-3.5 h-3.5 ${getBatteryColor(device.batteryPercent)}`} />
-            <span>Battery Level</span>
-          </div>
-          <div className="text-lg font-black text-white mt-1">
-            {device.batteryPercent ?? '--'}%
-            <span className="text-[10px] font-normal text-slate-400 ml-1">({device.batteryVoltage ?? 3.9}V)</span>
-          </div>
-        </div>
-
-        <div className="p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
-          <div className="text-slate-400 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Loop Latency</span>
-          </div>
-          <div className="text-lg font-black text-cyan-400 mt-1">
-            {device.connectivity.latencyMs ?? 25}
-            <span className="text-[10px] font-normal text-slate-400 ml-1">ms</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-1.5 text-xs text-slate-400 pt-2 border-t border-slate-800/80">
-        <div className="flex justify-between">
-          <span>Configured Scan Bound:</span>
-          <span className="font-mono text-slate-200 font-bold">&le; 42.0 ms</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Measured Hardware Cycle:</span>
-          <span className="font-mono text-cyan-400 font-bold">{device.connectivity.actualScanMs ?? 26.5} ms</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last Heartbeat:</span>
-          <span className="font-mono text-slate-300">Just now</span>
-        </div>
+      <div className="pt-3 border-t border-slate-800 mt-4 text-[10px] text-slate-400 flex items-center justify-between">
+        <span>Hardware: ESP32 DevKit V1</span>
+        <span className="text-emerald-400 font-semibold">● 24h Telemetry Sync</span>
       </div>
     </div>
   );

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AngRaksha | Guardian Telematics & Safety Platform</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f0f9ff', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body { background-color: #080c14; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .custom-pulse-marker { display: flex; align-items: center; justify-content: center; }
+    .pulse-ring { border: 3px solid #38bdf8; border-radius: 50%; height: 38px; width: 38px; position: absolute; animation: pulsate 1.8s ease-out infinite; opacity: 0; }
+    .pulse-ring.sos { border-color: #ef4444; animation: pulsate 0.9s ease-out infinite; }
+    .pulse-dot { width: 16px; height: 16px; background: #0284c7; border: 2.5px solid #ffffff; border-radius: 50%; box-shadow: 0 0 10px rgba(56, 189, 248, 0.8); position: relative; z-index: 2; }
+    .pulse-dot.sos { background: #dc2626; box-shadow: 0 0 16px rgba(239, 68, 68, 1); }
+    @keyframes pulsate { 0% { transform: scale(0.1); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 font-bold">
+          🛡️
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span class="font-black text-sm text-white">ANGRAKSHA</span>
+            <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">GUARDIAN</span>
+          </div>
+          <div class="text-[10px] text-slate-400">Pedestrian: <b class="text-slate-200">Rajesh K.</b> (ASTRA-001)</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5">
+        <span id="source-badge" class="text-[10px] font-bold px-2.5 py-1 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+          ● LIVE TELEMETRY
+        </span>
+        <span class="text-xs font-bold px-3 py-1 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> ONLINE
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Simulator Top Bar for Judge Pitch -->
+  <div class="bg-slate-900 border-b border-slate-800 p-2.5">
+    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between flex-wrap gap-2 text-xs">
+      <div class="flex items-center gap-2 font-bold text-amber-400">
+        <span>⚡ JUDGE SIMULATOR:</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button onclick="inject('CLEAR')" class="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 font-semibold">1. All Clear (150cm)</button>
+        <button onclick="inject('LEFT')" class="px-2.5 py-1 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30 font-semibold">2. Front Obstacle → Guide Left</button>
+        <button onclick="inject('RIGHT')" class="px-2.5 py-1 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30 font-semibold">3. Front Obstacle → Guide Right</button>
+        <button onclick="inject('WATER')" class="px-2.5 py-1 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 font-semibold">4. Water / Puddle Electrode</button>
+        <button onclick="inject('DROP')" class="px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 font-semibold">5. Stair / Drop Freefall</button>
+        <button onclick="inject('STOP')" class="px-2.5 py-1 rounded bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 font-semibold">6. Dead End / Stop</button>
+        <button onclick="inject('SOS')" class="px-2.5 py-1 rounded bg-red-600 text-white font-bold hover:bg-red-500 shadow-md">🚨 7. Hardware SOS Panic</button>
+        <button onclick="syncBrowserGPS()" class="px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30 font-semibold">📍 8. Sync Phone GPS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      
+      <!-- Left Column: Guidance & Radar -->
+      <div class="space-y-6">
+        
+        <!-- Direction Hero -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+            <span class="text-xs font-bold uppercase text-slate-200">Active Direction Guidance Vector</span>
+            <span id="risk-pill" class="text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/30">RISK: CLEAR</span>
+          </div>
+
+          <div id="guidance-box" class="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 flex items-center justify-between transition-all">
+            <div class="flex items-center gap-4">
+              <div id="guidance-icon" class="text-3xl">↑</div>
+              <div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase">Current Guidance</div>
+                <div id="guidance-text" class="text-xl font-black text-emerald-400">PROCEED FORWARD</div>
+                <div id="guidance-desc" class="text-xs text-slate-300 mt-0.5">All spatial sectors clear. Normal pedestrian walking.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3-Zone Spatial Radar -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <span class="text-xs font-bold uppercase text-slate-200">Three-Zone Ultrasonic Radar (HC-SR04)</span>
+            <span class="text-[10px] text-slate-400 font-mono">Bound: ≤42ms</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div class="p-3 rounded-lg bg-slate-950 border border-slate-800">
+              <div class="text-[10px] text-slate-400 font-bold">LEFT (GPIO 5/18)</div>
+              <div class="text-2xl font-black font-mono text-emerald-400 my-1"><span id="dist-left">142</span> cm</div>
+              <div class="text-[10px] text-slate-500">1.42 meters</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-950 border border-slate-800">
+              <div class="text-[10px] text-slate-400 font-bold">FRONT (GPIO 19/23)</div>
+              <div class="text-2xl font-black font-mono text-emerald-400 my-1"><span id="dist-front">150</span> cm</div>
+              <div class="text-[10px] text-slate-500">1.50 meters</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-950 border border-slate-800">
+              <div class="text-[10px] text-slate-400 font-bold">RIGHT (GPIO 13/14)</div>
+              <div class="text-2xl font-black font-mono text-emerald-400 my-1"><span id="dist-right">138</span> cm</div>
+              <div class="text-[10px] text-slate-500">1.38 meters</div>
+            </div>
+          </div>
+
+          <!-- Auxiliary Badges -->
+          <div class="grid grid-cols-2 gap-3 pt-2 text-xs">
+            <div id="water-badge" class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="font-bold text-white">Water Electrode</div>
+                <div class="text-[10px] text-slate-400">GPIO 34 ADC</div>
+              </div>
+              <span id="water-status" class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">DRY</span>
+            </div>
+
+            <div id="drop-badge" class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="font-bold text-white">Stairs / Drop</div>
+                <div class="text-[10px] text-slate-400">MPU-6050 Freefall</div>
+              </div>
+              <span id="drop-status" class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">LEVEL</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Leaflet Map & Device Status -->
+      <div class="space-y-6">
+        
+        <!-- Live Map Card -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl">
+          <div class="p-3.5 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+            <span class="text-xs font-bold uppercase text-slate-200">Live Rescue Telemetry Map</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">GPS LOCKED</span>
+          </div>
+
+          <div id="map" class="w-full h-[320px] bg-slate-950"></div>
+
+          <div class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <div>Coordinates: <span id="coord-text" class="font-mono text-white font-bold">12.97160° N, 77.59460° E</span></div>
+            <div>Safe Zone: <span class="text-emerald-400 font-semibold">500m Home Radius</span></div>
+          </div>
+        </div>
+
+        <!-- Telemetry Summary -->
+        <div class="grid grid-cols-3 gap-3">
+          <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+            <div class="text-[10px] text-slate-400 uppercase font-semibold">Li-ion Battery</div>
+            <div class="text-xl font-black text-white font-mono mt-1">87% <span class="text-xs text-slate-400">(3.91V)</span></div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+            <div class="text-[10px] text-slate-400 uppercase font-semibold">Walking Speed</div>
+            <div class="text-xl font-black text-sky-400 font-mono mt-1">1.2 km/h</div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+            <div class="text-[10px] text-slate-400 uppercase font-semibold">Scan Bound</div>
+            <div class="text-xl font-black text-emerald-400 font-mono mt-1">≤ 42 ms</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- SOS Emergency Modal -->
+  <div id="sos-modal" class="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="w-full max-w-lg rounded-2xl border-2 border-red-500 bg-slate-950 p-6 shadow-2xl flex flex-col gap-4 text-center">
+      <div class="text-5xl animate-bounce">🚨</div>
+      <h2 class="text-xl font-black text-white uppercase tracking-wider">CRITICAL SOS EMERGENCY ACTIVE</h2>
+      <p class="text-xs text-slate-300">Rajesh K. pressed the hardware panic switch on the AngRaksha stick.</p>
+      
+      <div class="p-3 rounded-lg bg-red-950/30 border border-red-500/40 text-sm font-mono text-white font-bold" id="sos-coords">
+        12.97160° N, 77.59460° E (Accuracy: ±4.2m)
+      </div>
+
+      <div class="flex gap-3 mt-2">
+        <a id="sos-map-link" href="#" target="_blank" class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-lg">
+          Open Google Maps Rescue
+        </a>
+        <button onclick="clearSOS()" class="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700">
+          Mute & Resolve Alarm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Leaflet Map
+    let map, marker, circle, polyline;
+    let currentLat = 12.9716, currentLng = 77.5946;
+    let trail = [[12.9708, 77.5938], [12.9712, 77.5942], [12.9716, 77.5946]];
+    let sosActive = false;
+    let audioCtx = null, sirenInterval = null;
+
+    window.onload = function() {
+      map = L.map('map', { center: [currentLat, currentLng], zoom: 16, zoomControl: false });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+
+      // Safe Zone Geofence Circle
+      L.circle([12.9716, 77.5946], { radius: 500, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.08, weight: 1.5, dashArray: '4, 6' }).addTo(map);
+
+      // Marker
+      const pulseIcon = L.divIcon({ className: 'custom-pulse-marker', html: '<div class="pulse-ring"></div><div class="pulse-dot"></div>', iconSize: [38, 38], iconAnchor: [19, 19] });
+      marker = L.marker([currentLat, currentLng], { icon: pulseIcon }).addTo(map);
+
+      // Polyline Trail
+      polyline = L.polyline(trail, { color: '#0284c7', weight: 4, opacity: 0.8 }).addTo(map);
+
+      setTimeout(() => { map.invalidateSize(); }, 200);
+    };
+
+    function playAlarm() {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      } catch (e) {}
+    }
+
+    function inject(type) {
+      const gBox = document.getElementById('guidance-box');
+      const gIcon = document.getElementById('guidance-icon');
+      const gText = document.getElementById('guidance-text');
+      const gDesc = document.getElementById('guidance-desc');
+      const rPill = document.getElementById('risk-pill');
+
+      const dLeft = document.getElementById('dist-left');
+      const dFront = document.getElementById('dist-front');
+      const dRight = document.getElementById('dist-right');
+
+      const wStatus = document.getElementById('water-status');
+      const dropStatus = document.getElementById('drop-status');
+
+      // Reset defaults
+      wStatus.innerText = 'DRY';
+      wStatus.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400';
+      dropStatus.innerText = 'LEVEL';
+      dropStatus.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400';
+
+      if (type === 'CLEAR') {
+        dLeft.innerText = '142'; dFront.innerText = '150'; dRight.innerText = '138';
+        gIcon.innerText = '↑';
+        gText.innerText = 'PROCEED FORWARD';
+        gText.className = 'text-xl font-black text-emerald-400';
+        gDesc.innerText = 'All forward pathways clear (>100cm). Normal walking.';
+        gBox.className = 'rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 flex items-center justify-between';
+        rPill.innerText = 'RISK: CLEAR';
+        rPill.className = 'text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+      } else if (type === 'LEFT') {
+        dLeft.innerText = '95'; dFront.innerText = '25'; dRight.innerText = '20';
+        gIcon.innerText = '←';
+        gText.innerText = 'STEER LEFT CORRIDOR';
+        gText.className = 'text-xl font-black text-sky-400';
+        gDesc.innerText = 'Front obstacle at 25cm. Left corridor open (95cm).';
+        gBox.className = 'rounded-xl border border-sky-500/40 bg-sky-950/20 p-4 flex items-center justify-between';
+        rPill.innerText = 'RISK: DANGER';
+        rPill.className = 'text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/30';
+      } else if (type === 'RIGHT') {
+        dLeft.innerText = '20'; dFront.innerText = '25'; dRight.innerText = '95';
+        gIcon.innerText = '→';
+        gText.innerText = 'STEER RIGHT CORRIDOR';
+        gText.className = 'text-xl font-black text-sky-400';
+        gDesc.innerText = 'Front obstacle at 25cm. Right corridor open (95cm).';
+        gBox.className = 'rounded-xl border border-sky-500/40 bg-sky-950/20 p-4 flex items-center justify-between';
+        rPill.innerText = 'RISK: DANGER';
+        rPill.className = 'text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/30';
+      } else if (type === 'WATER') {
+        wStatus.innerText = 'WATER DETECTED';
+        wStatus.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-red-500 text-white animate-pulse';
+        gIcon.innerText = '🛑';
+        gText.innerText = 'WATER / PUDDLE IMPASSE';
+        gText.className = 'text-xl font-black text-red-400';
+        gDesc.innerText = 'Tip electrode sensed water depth. Stick buzzer actively alarming.';
+        gBox.className = 'rounded-xl border border-red-500/40 bg-red-950/20 p-4 flex items-center justify-between';
+        rPill.innerText = 'RISK: CRITICAL';
+        rPill.className = 'text-[10px] font-bold px-2 py-0.5 rounded border bg-red-500/10 text-red-400 border-red-500/30';
+      } else if (type === 'DROP') {
+        dropStatus.innerText = 'DROP WARNING';
+        dropStatus.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500 text-slate-950 animate-pulse';
+        gIcon.innerText = '⚠️';
+        gText.innerText = 'STAIRS / CURB DROP';
+        gText.className = 'text-xl font-black text-amber-400';
+        gDesc.innerText = 'IMU sensed freefall (<0.35g) for down-stairs step warning.';
+        gBox.className = 'rounded-xl border border-amber-500/40 bg-amber-950/20 p-4 flex items-center justify-between';
+        rPill.innerText = 'RISK: CRITICAL';
+        rPill.className = 'text-[10px] font-bold px-2 py-0.5 rounded border bg-red-500/10 text-red-400 border-red-500/30';
+      } else if (type === 'STOP') {
+        dLeft.innerText = '22'; dFront.innerText = '18'; dRight.innerText = '20';
+        gIcon.innerText = '🛑';
+        gText.innerText = 'CRITICAL STOP MANDATE';
+        gText.className = 'text-xl font-black text-red-400';
+        gDesc.innerText = 'All forward sectors blocked (<30cm). Continuous buzzer alarm.';
+        gBox.className = 'rounded-xl border border-red-500/40 bg-red-950/20 p-4 flex items-center justify-between';
+        rPill.innerText = 'RISK: CRITICAL';
+        rPill.className = 'text-[10px] font-bold px-2 py-0.5 rounded border bg-red-500/10 text-red-400 border-red-500/30';
+      } else if (type === 'SOS') {
+        sosActive = true;
+        document.getElementById('sos-modal').classList.remove('hidden');
+        document.getElementById('sos-modal').classList.add('flex');
+        document.getElementById('sos-map-link').href = `https://www.google.com/maps/search/?api=1&query=${currentLat},${currentLng}`;
+        playAlarm();
+        if (!sirenInterval) sirenInterval = setInterval(playAlarm, 800);
+      }
+    }
+
+    function clearSOS() {
+      sosActive = false;
+      document.getElementById('sos-modal').classList.add('hidden');
+      document.getElementById('sos-modal').classList.remove('flex');
+      if (sirenInterval) clearInterval(sirenInterval);
+      inject('CLEAR');
+    }
+
+    function syncBrowserGPS() {
+      if (!navigator.geolocation) { alert('Geolocation not supported'); return; }
+      navigator.geolocation.getCurrentPosition((pos) => {
+        currentLat = pos.coords.latitude;
+        currentLng = pos.coords.longitude;
+        map.setView([currentLat, currentLng], 17);
+        marker.setLatLng([currentLat, currentLng]);
+        document.getElementById('coord-text').innerText = `${currentLat.toFixed(5)}° N, ${currentLng.toFixed(5)}° E`;
+        document.getElementById('sos-coords').innerText = `${currentLat.toFixed(5)}° N, ${currentLng.toFixed(5)}° E (Accuracy: ±${pos.coords.accuracy.toFixed(1)}m)`;
+      });
+    }
+  </script>
+</body>
+</html>
