@@ -80,6 +80,12 @@
 #define PIN_STATUS_LED              2       // DevKit onboard LED
 
 // =============================================================================
+// WATER / LIQUID SENSING ELECTRODE (Pothole / Puddle Detection)
+// =============================================================================
+#define PIN_WATER_SENSOR            34      // ADC1_CH6 (Input only on ESP32)
+#define WATER_ADC_THRESHOLD         1500    // ADC value threshold for liquid conduction (0 - 4095)
+
+// =============================================================================
 // OPTIONAL GPS (ISOLATED FROM CRITICAL 24H MOBILITY CORE)
 // =============================================================================
 #define PIN_GPS_RX                  16      // Serial2 RX (Optional)

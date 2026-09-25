@@ -108,5 +108,6 @@ $$\mathbf{V_{\text{out}}} = 5.0\,\text{V} \times \frac{2\text{ k}\Omega}{1\text{
 | `PIN_MOTOR_CENTER`| **GPIO 26** | Center Motor Driver | 1k Base Resistor to NPN |
 | `PIN_MOTOR_RIGHT` | **GPIO 27** | Right Motor Driver | 1k Base Resistor to NPN |
 | `PIN_BUZZER` | **GPIO 4** | Active Buzzer Driver | Digital Output |
+| `PIN_WATER_SENSOR`| **GPIO 34** | Liquid / Pothole Electrode | Analog Input (ADC1_CH6) |
 | `PIN_SOS_BUTTON` | **GPIO 15** | SOS Tactile Switch | `INPUT_PULLUP` to GND |
 | `PIN_STATUS_LED` | **GPIO 2** | Onboard LED | Visual System Heartbeat |
