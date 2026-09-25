@@ -63,10 +63,11 @@ export default function LiveMap({
           attributionControl: false,
         });
 
-        // Dark-styled OSM Carto / OSM Tiles
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        // Free OpenStreetMap tiles — no API key needed, dark filter applied via globals.css
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          subdomains: 'abcd',
+          subdomains: 'abc',
+          attribution: '© OpenStreetMap contributors',
         }).addTo(map);
 
         // Geofence Safe Zone Circle
