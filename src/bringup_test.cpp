@@ -236,9 +236,9 @@ bool mpuReadBytes(uint8_t reg, uint8_t *buffer, uint8_t length)
     }
 
     uint8_t received = Wire.requestFrom(
-        MPU6050_ADDR,
-        length,
-        true
+        (uint8_t)MPU6050_ADDR,
+        (uint8_t)length,
+        (uint8_t)1
     );
 
     if (received != length)
